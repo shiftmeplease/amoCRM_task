@@ -6,6 +6,8 @@ import {
   updateContact,
   createContact,
 } from "./api.js";
+
+//self-sufficient helper
 export async function updateAccessToken() {
   await db.read();
   let response;
@@ -35,19 +37,26 @@ export async function updateAccessToken() {
   return { message: "Access token updated", method, expiresAt: db.data.expiresAt };
 }
 
-export async function findContact(phone, email) {
-  let found = {};
-  if (phone) {
-    const { data, status } = await findContactWithQuery(phone);
-    if (!status !== 204) found.phone = data;
-  }
-  if (email) {
-    const { data, status } = await findContactWithQuery(email);
-    if (status !== 204) found.email = data;
-  }
+//self-sufficient helper
+export async function findContact(info) {
+  //not neccessary to validate existance or value of arguments
+  const found = {};
+
+  let promiseArr = ["phone", "email"].map((field) => {
+    const query = info[field];
+    if (!query) return Promise.resolve([]);
+    return findContactWithQuery(query).then(({ status, data }) => {
+      if (!status !== 204) found[field] = data;
+    });
+  });
+
+  //TODO not optimistic handler
+  await Promise.all(promiseArr);
+
   if (found.phone?._embedded?.contacts.length > 0 && found.email?._embedded?.contacts.length > 0) {
     const phoneIds = new Set(found.phone._embedded.contacts.map((obj) => obj.id));
     const intersection = found.email._embedded.contacts.filter((obj) => phoneIds.has(obj.id));
+    //TODO unclear TA, bulk update of same contacts or remove duplicates
     return intersection[0];
   }
   if (found.phone?._embedded?.contacts.length > 0) return found.phone._embedded.contacts[0];
@@ -56,18 +65,30 @@ export async function findContact(phone, email) {
 }
 
 export async function handleContact(name, phone, email) {
+  //TODO update token with cron, not on demand
   await updateAccessToken();
-  const prev = await findContact(phone, email);
+  const prev = await findContact({ phone, email });
   let action = "";
   let response = {};
   if (prev?.id) {
+    const { custom_fields_values: prevFields } = prev;
+    const prevInfo = prevFields.reduce(
+      (accum, currVal) => {
+        accum[currVal.field_code.toLowerCase()] = currVal.values[0].value;
+        return accum;
+      },
+      { name: prev.name },
+    );
+
+    if (prevInfo.name === name && prevInfo.phone === phone && prevInfo.email === email) {
+      action = "skip_update";
+      return { action };
+    }
     action = "update";
-    response = await updateContact({ name, phone, email }, prev);
+    response = await updateContact({ name, phone, email }, prev); //TODO investigate how api of update works, will it remove undefined values?
   } else {
     action = "create";
-    response = await createContact(name, phone, email);
+    response = await createContact({ name, phone, email });
   }
   return { response, action };
-  //update if so
-  //create
 }
