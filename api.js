@@ -118,3 +118,17 @@ export async function invokeAccessTokenByRefresh({ integrationId, secret, refres
   }
   return { data, status };
 }
+
+export async function createLead(id) {
+  const { status, data } = await instance.post("/api/v4/leads", [
+    {
+      name: "Тестовая сделка",
+      _embedded: {
+        contacts: [{ id }],
+      },
+    },
+  ]);
+
+  // {"request":{"contacts":{"update":[{"id":65000443,"custom_fields":[{"id":"2165375","values":[{"enum":"4810465","value":"1313131"}]}],"last_modified":1694455708}]}}}
+  return { status, data };
+}

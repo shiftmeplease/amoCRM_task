@@ -5,6 +5,7 @@ import {
   findContactWithQuery,
   updateContact,
   createContact,
+  createLead,
 } from "./api.js";
 
 //self-sufficient helper
@@ -82,13 +83,17 @@ export async function handleContact(name, phone, email) {
 
     if (prevInfo.name === name && prevInfo.phone === phone && prevInfo.email === email) {
       action = "skip_update";
-      return { action };
+    } else {
+      action = "update";
+      response = await updateContact({ name, phone, email }, prev); //TODO investigate how api of update request works, will it remove undefined values?
     }
-    action = "update";
-    response = await updateContact({ name, phone, email }, prev); //TODO investigate how api of update works, will it remove undefined values?
   } else {
     action = "create";
     response = await createContact({ name, phone, email });
   }
-  return { response, action };
+
+  const responseId = response.data?._embedded.contacts[0].id;
+  const leadId = responseId ? responseId : prev.id;
+  const leadResponse = await createLead(leadId);
+  return { contact: { response, action }, lead: leadResponse };
 }
